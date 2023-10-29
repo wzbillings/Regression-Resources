@@ -1,0 +1,362 @@
+---
+title: "Regression workshop 2"
+author: "Zane"
+format: pdf
+---
+
+## CI introduction
+
+Recall the probability model we are interested in is
+$$y_i \sim \mathrm{Normal}\left(\beta_0 + \beta_1 x_i, \sigma^2\right),$$
+which we could equivalently write as
+$$
+\begin{align*}
+y_i &= \beta_0 + \beta_1 x_i + \varepsilon_i \\
+\varepsilon_i &\sim \mathrm{Normal}\left(0, \sigma^2\right),
+\end{align*}
+$$
+where $i = 1, \ldots, N$ and the population parameters $\beta_0, \beta_1$, and
+$\sigma^2$ are (unknown) constant values.
+
+In the previous lesson, we learned how to estimate $\beta_0$ and $\beta_1$
+using the least squares method (and we briefly discussed estimating $\sigma^2$
+with the maximum likelihood method, which gives us equivalent estimates for
+$\beta_0$ and $\beta_1$). We'll call those estimates, respectively,
+$\hat{\beta}_0$, $\hat{\beta}_1$, and $\hat{\sigma}^2$.
+We also discussed the $t$-statistic,
+$$
+t = \frac{\hat{\beta}_j - \tilde{\beta}_j}{\mathrm{SE}\left(\hat{\beta}_j\right)}.
+$$
+Remember that $\tilde{\beta}_j$ is a number that we pick, and if we pick
+$\tilde{\beta}_j = 0$, which is usually what we want, then we know that
+(omitting the math proof here)
+$$t \sim t_{n-2},$$
+or we would say in words that the $t$-statistic follows a Student's $t$ distribution with $n-2$ degrees of freedom. Note that this distribution will have the same amount of
+degrees of freedom as the residual standard error (MSE).
+
+Here, $j=0$ is the intercept and $j=1$ is the slope.
+The formula for the standard error of the intercept and the slope looks different,
+in general if we wanted to write out a formula for $\mathrm{SE}\left(\hat{\beta}_j\right)$,
+we would need to use matrices. But for now we'll let `R` do those calculations
+for us, since that's not the focus of this.
+
+Because we know what probability distribution this statistic follows,
+we can find values where our statistic will occur with a certain probability
+range. We typically set $\alpha = 0.05$, and this is the same idea -- we want
+to find values of the $t$-statistic that should occur $5\%$ of the time or
+less often.
+
+```{r}
+mtcars_df <- nrow(mtcars) - 2
+x <- seq(-3, 3, 0.01)
+y <- dt(x, df = mtcars_df)
+plot(x, y, type = "l", xlab = "t", ylab = "f(t)")
+q_upper <- qt(0.975, mtcars_df)
+polygon(
+	x = c(x[x>=q_upper], rev(x[x>=q_upper])),
+	y = c(y[x>=q_upper], rep(0, length(x[x>=q_upper]))),
+	col = "gray"
+)
+polygon(
+	x = c(x[x<=-q_upper], rev(x[x<=-q_upper])),
+	y = c(y[x<=-q_upper], rep(0, length(x[x<=-q_upper]))),
+	col = "gray"
+)
+abline(v = q_upper, lty = 2)
+abline(v = -q_upper, lty = 2)
+text(x = q_upper, y = 0.2, labels = )
+```
+
+
+
+
+## Applied intro to regression confidence intervals
+
+First we need to load the data. We'll use the `mtcars` data again, which comes
+with `R`.
+
+```{r}
+data(mtcars)
+```
+
+To demonstrate CI's for regression models, we'll start with the same
+regression model we fitted last time, with `mpg` as the response variable and
+`wt` as the explanatory variable.
+
+```{r}
+mod <- lm(mpg ~ wt, data = mtcars)
+plot(
+	x = mtcars$wt,
+	y = mtcars$mpg,
+	xlab = "Weight (1000s of lbs)",
+	ylab = "Milage per gallon"
+)
+abline(mod, lty = 2, lwd = 1)
+```
+
+The dashed line in this plot is a visualization of the fitted regression line.
+Recall that the `summary()` of the model gives us information about the fitted
+coefficients and their confidence intervals.
+
+```{r}
+summary(mod)
+```
+
+Since we covered the basics of what a confidence interval means, let's try to
+interpret these confidence intervals in the context of our problem. First we'll
+look at the confidence intervals for the coefficients.
+
+```{r}
+# Get confidence intervals for the regression parameters
+confint(mod, level = 0.95)
+```
+
+* Our estimated intercept is 37.29 (95% CI: 33.45, 41.12).
+* Our estimate slope is -5.34 (95% CI: -6.49, -4.20).
+
+If our confidence interval does not contain zero, that's the same as our
+p-value for the coefficient being significant. Our data are consistent (at a
+95% confidence level) with any number in the CI.
+
+Remember last time we said the intercept is not very useful for us practically
+(a car can't have weight zero). We can interpret the slope though. Our point
+estimate is -5.34, so if we increased the weight of a car by 1 unit (for this
+dataset, that is 1000 lbs) and didn't change anything else about the car, we
+would expect the MPG to decrease by -5.34. However, we know that this is not the
+only value consistent with our data. We can also say that we are 95% confident
+that the true amount of change is between -6.49 to -4.20 units in the MPG.
+
+## Confidence intervals for predictions at specific x values
+
+We can also get a CI for the prediction at each point -- remember that this
+is a CI for the conditional mean of y ($E(y \mid x_i)$). Note that you need to do `?predict.lm`
+to get specific help for this function.
+
+```{r}
+predict(mod, interval = "confidence", level = 0.95) |>
+	head()
+```
+
+These values are somewhat tricky to interpret -- they take into account the
+uncertainty in our parameter estimates, but nothing else. If we look at the
+weight of a Mazda RX4 (2.62 thousand lbs) -- the first observation in this
+data frame -- we can see that the model predicts an MPG of 23.28. We can be
+95% confident that the mean MPG of cars with a weight of 2.62 thousand lbs is
+between 21.99 and 24.58.
+
+## Prediction intervals vs confidence intervals
+
+We can also get PIs for each observed value of the explanatory variables. The PI
+is different from the CI because it gives us a plausible range of values that we
+might expect for a new observation with a specific x value, if our model is
+correct for that new observation.
+
+So, for example, if Mazda released a new car that weighs the same as the RX4 (
+again, 2.62 thousand lbs), what would we reasonably expect the MPG for that car
+to be, based on our model? This accounts for the error in our model estimation
+(this is all that the CI captures), and the individual variance across
+experimental units (across different car models of the same weight, for us).
+
+Let's calculate the PIs for the values we observed in the data. So, the PI will
+ALWAYS be larger than the CI at the same level, because it accounts for an extra
+source of variation. Note the warning message that we get here.
+
+```{r}
+predict(mod, interval = "prediction") |>
+	head()
+```
+
+Recall that again, the weight of the Mazda RX4 is the first observation in this
+data frame. Based on this PI, we can say that, again, our model predicts an
+MPG of 23.28 for a car with weight 2.62 thousand lbs -- note that the point
+estimates don't change. What is new is that with this information, we can say
+that we are 95% confident that the MPG for an individual (new) car with weight
+2.62 thousand lbs is between 16.92 and 29.64.
+
+## Interpolation
+
+We are likely also interested in getting CIs or PIs for a wide range of values,
+e.g., for all the values of the explanatory variable in the range that our
+model covers. Getting a prediction for a new value in the range of the model is
+called **interpolation** (as opposed to **extrapolation**, where you make
+predictions for values outside the range of the model). Note here that the
+"range of the model" is the range of the explanatory variable -- our model
+is only "valid" (in a specific sense) for values in-between the x-values we
+already observed, and we have to make more assumptions to look outside of those
+bounds.
+
+The process for getting interpolated predictions in `R` is simple: all we need
+to do is build a vector with all the values we want to get predictions on.
+To get the CI for every value in the predictor range, that means we need a
+vector that starts at the minimum predictor value and ends at the maximum
+predictor value, and increases by some step size each time. In `R`, you can
+easily create this vector with the `seq()` function, which allows you to
+decide how many points you should evaluate, or what the step size between each
+point should be. (Remember there are actually an uncountably infinite number
+of points in the interval, so we have to choose enough points in this vector
+to get a reasonable amount of precision for whatever we are doing.)
+
+```{r}
+summary(mtcars$wt)
+```
+
+From the summary of the `wt` values, we see the min and max of the observed
+weights. It's usually fine to extrapolate just a tiny amount, so based on
+these numbers, we'll get predictions between 1.5 and 5.5, because I like
+nice round numbers. We'll choose a step size of 0.1 each time, which should
+give us smooth enough predictions to be useful.
+
+```{r}
+new_wts <- seq(1.5, 5.5, 0.1)
+```
+
+Note that because of how the `predict.lm()` function works, we need to make
+sure the function knows that these values are associated with the `wt` variable.
+Specifically, these values have to be in a column named `wt` inside of a data
+frame.
+
+```{r}
+# Has to have the same name as the variable in the linear model
+new_wts_df <- data.frame(wt = new_wts)
+```
+
+Now we can pass this data frame as the `newdata` argument to the `predict()`
+function, and it will get the PI (or CIs if we set `interval = "confidence"`)
+for each of those values, even though we did not observe them.
+
+```{r}
+new_wts_preds <-
+	predict(
+		mod,
+		newdata = new_wts_df,
+		interval = "prediction",
+		level = 0.95
+	)
+
+# Put the weight values together with the predictions
+# You could save this as an object if you wanted to do more with it, like
+# make plots.
+# See the appendix for the broom::augment() function that does this 
+# automatically.
+interp_preds <- cbind(new_wts_df, new_wts_preds)
+head(interp_preds)
+```
+
+## Appendix: tidier / easier to use code for regression models.
+
+To get the CIs, etc., we can also use the `broom` package, which will output
+all of our results as a well-formatted data frame, which can often be easier
+to use than the output from base `R` functions. To get the CIs for the
+coefficients, we can use `broom::tidy()`. To get the specific documentation for
+this function and its options, you can use `?broom::tidy.lm`.
+
+```{r}
+broom::tidy(mod)
+```
+
+To get CIs or PIs, you can use `broom::augment.lm()`. This is similar to the
+`predict()` function, but it attaches the prediction columns directly to the
+inputted data frame, instead of returning only the predictions.
+
+Note that by default, if you don't specify the `newdata` argument, the predictions
+will be returned for all of the explanatory variable combinations that were
+observed in the data, if you want others you have to create a data frame of
+explanatory variables that has all the observations you want, like with the
+`predict()` function.
+
+```{r}
+broom::augment(mod, interval = "confidence")
+```
+
+We can also get the prediction intervals (and the SEs).
+
+```{r}
+broom::augment(mod, interval = "prediction", se_fit = TRUE)
+```
+
+And finally, remember that we can "interpolate" to get CI values for all
+possible explanatory variable values.
+
+```{r}
+newdata_preds <-
+	broom::augment(
+		mod,
+		newdata = data.frame(wt = seq(1.5, 5.5, 0.1)),
+		interval = "prediction"
+	)
+
+newdata_ci <-
+	broom::augment(
+		mod,
+		newdata = data.frame(wt = seq(1.5, 5.5, 0.1)),
+		interval = "confidence"
+	)
+```
+
+And here's a quick example of plotting these data easily using the output
+returned from `broom::augment()`.
+
+```{r}
+# Create the plot with the regression line on it
+plot(
+	# Specify x and y data vectors
+	newdata_preds$wt,
+	newdata_preds$.fitted,
+	# Specify axis titles
+	xlab = "Simulated weight (1000s of lbs)",
+	ylab = "Predicted MPG",
+	# Make a line plot
+	type = "l",
+	# Change the line thickness (lwd = line width)
+	lwd = 1.5,
+	# Set the axis limits
+	xlim = c(1.5, 5.5),
+	ylim = c(1, 36),
+	# These are graphical parameters necessary to take the xlim/ylim literally,
+	# if you don't have them you will get a little extra space around each limit.
+	xaxs = "i",
+	yaxs = "i"
+)
+# Add lines for the CI and PI -- each of these commands adds a line to the plot
+lines(
+	newdata_ci$wt,
+	newdata_ci$.lower,
+	# Lty = 2 gives a dashed line (lty = line type)
+	lty = 2,
+	lwd = 1.25
+)
+lines(
+	newdata_ci$wt,
+	newdata_ci$.upper,
+	lty = 2,
+	lwd = 1.25
+)
+lines(
+	newdata_preds$wt,
+	newdata_preds$.lower,
+	# Lty = 3 gives a dotted line
+	lty = 3
+)
+lines(
+	newdata_preds$wt,
+	newdata_preds$.upper,
+	lty = 3
+)
+# Add a legend for the different lty/lwd values
+legend(
+	"topright",
+	c("Regression line", "95% CI", "95% PI"),
+	lty = c(1, 2, 3),
+	lwd = c(1.5, 1.25, 1)
+)
+# Add the original data points to the plot
+points(mtcars$wt, mtcars$mpg)
+```
+
+As a final note, `broom::glance()` is the third and final function in the main
+`broom` trio which can give you the model fit statistics from a model.
+
+```{r}
+broom::glance(mod)
+```
+
